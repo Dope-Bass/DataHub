@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "Connection.h"
 
-Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, std::function<void(size_t)> callback)
+Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, 
+    std::function<void(size_t, packet_helpers::packet_type)> callback)
 {
 	m_socket = socket;
     m_clientId = clientId;
@@ -23,33 +24,53 @@ Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, std
 Connection::~Connection()
 {
     std::cout << "Connection destroyed" << std::endl;
+
+    boost::system::error_code error;
+    m_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, error);
+
     m_socket->close();
 
-    m_commandReadThread.join();
-    m_commandWriteThread.join();
+    if (m_commandReadThread.joinable()) {
+        m_commandReadThread.join();
+    }
+
+    if (m_commandWriteThread.joinable()) {
+        m_commandWriteThread.join();
+    }
 }
 
 void Connection::receive_packet()
 {
+    std::weak_ptr<tcp::socket> sockCheck = m_socket;
+
     while (true) {
-        uint8_t buffer[PACKET_SIZE];
-        boost::system::error_code error;
-        size_t bytesRead = m_socket->read_some(boost::asio::buffer(buffer), error);
+        std::shared_ptr<tcp::socket> sptr = sockCheck.lock();
+        if (std::shared_ptr<tcp::socket> sptr = sockCheck.lock()) {
+            uint8_t buffer[PACKET_SIZE];
 
-        if (error || bytesRead == 0) {
-            std::cout << "Client disconnected." << std::endl;
-            break;
+            try {
+                boost::system::error_code error;
+                size_t bytesRead = m_socket->read_some(boost::asio::buffer(buffer), error);
+
+                if (error || bytesRead == 0) {
+                    std::cout << "Client disconnected." << std::endl;
+                    break;
+                }
+
+                packet_helpers::packet pack;
+                pack.copy_from_buffer(buffer);
+
+                std::cout << "Packet received on server " << pack.clientId << std::endl << (int)pack.type << std::endl;
+
+                process_incoming_packet(pack);
+            }
+            catch (std::exception& e) {
+                std::cerr << "Could not read from socket: " << e.what() << std::endl;
+            }
         }
-
-        packet_helpers::packet pack;
-        pack.copy_from_buffer(buffer);
-
-        std::cout << "Packet received on server " << pack.clientId << std::endl << (int)pack.type << std::endl;
-
-        process_incoming_packet(pack);
-
-        //boost::uuids::uuid connID;
-        //m_clientConnections.insert({ boost::uuids::to_string(connID), std::make_unique<Connection>() });
+        else {
+            return;
+        }
     }
 }
 
@@ -96,7 +117,7 @@ void Connection::process_incoming_packet(const packet_helpers::packet &pack)
 {
     switch (pack.type) {
         case packet_helpers::packet_type::close: {
-            m_serverCallback(m_clientId);
+            m_serverCallback(m_clientId, pack.type);
             return;
         }
         default: {

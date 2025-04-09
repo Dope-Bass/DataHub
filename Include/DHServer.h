@@ -14,7 +14,9 @@ public:
 
     void console_input_mode();
 
-    void command(size_t clientId);
+    void command(size_t clientId, packet_helpers::packet_type type);
+
+    void closeConnection(size_t clientId);
 
 private:
     void process_console_input(std::string& line);
@@ -26,7 +28,9 @@ private:
     std::thread m_connectionThread;
     std::thread m_commandThread;
 
-    std::unordered_map<size_t, std::shared_ptr<Connection>> m_clientConnections;
+    std::unordered_map<size_t, std::unique_ptr<Connection>> m_clientConnections;
 
     std::shared_ptr<tcp::acceptor> m_acceptor;
+
+    std::mutex m_mutex;
 };

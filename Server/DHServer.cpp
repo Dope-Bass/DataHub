@@ -12,7 +12,7 @@ DHServer::DHServer()
 
 DHServer::~DHServer()
 {
-    for (auto conn : m_clientConnections) {
+    for (auto &conn : m_clientConnections) {
         conn.second->create_connection_packet(false);
     }
 }
@@ -38,9 +38,28 @@ void DHServer::process_console_input(std::string& line)
     }
 }
 
-void DHServer::command(size_t clientId)
+void DHServer::command(size_t clientId, packet_helpers::packet_type type)
 {
     std::cout << "Server got command from client!" << clientId;
+
+    switch (type) {
+        case packet_helpers::packet_type::close: {
+            closeConnection(clientId);
+        }
+        default: {
+            return;
+        }
+    }
+}
+
+void DHServer::closeConnection(size_t clientId)
+{
+    std::lock_guard lock(m_mutex);
+
+    auto connectionIt = m_clientConnections.find(clientId);
+    if (connectionIt != m_clientConnections.end()) {
+        m_clientConnections.erase(connectionIt);
+    }
 }
 
 void DHServer::listen_on_connections()
@@ -62,14 +81,11 @@ void DHServer::listen_on_connections()
             size_t id = std::hash<std::string>{}(strId);
 
             using std::placeholders::_1;
-            std::function<void(size_t)> callback = std::bind(&DHServer::command, this, _1);
+            using std::placeholders::_2;
+            std::function<void(size_t, packet_helpers::packet_type)> callback = std::bind(&DHServer::command, this, _1, _2);
 
             m_clientConnections.insert({ id,
-                std::make_shared<Connection>(socket, id, callback) });
-
-            //m_commandThread = std::thread([this](std::shared_ptr<tcp::socket> socket) { this->getPacket(socket); }, socket);
-            //m_commandThread.detach();
-            //getPacket(socket);
+                std::make_unique<Connection>(socket, id, callback) });
         }
     }
     catch (std::exception& e) {

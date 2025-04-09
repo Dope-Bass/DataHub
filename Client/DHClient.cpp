@@ -7,24 +7,7 @@ DHClient::DHClient(const std::string& server, unsigned int port)
 
     sptr_ioContext.reset(new boost::asio::io_context);
 
-    // Create socket
-    tcp::resolver resolver(*sptr_ioContext);
-    tcp::resolver::results_type endpoints = resolver.resolve(server, std::to_string(port));
-
-    sptr_socket.reset(new tcp::socket(*sptr_ioContext));
-
-    // Connect to server
-    boost::asio::connect(*sptr_socket, endpoints);
-
-    m_commandReadThread = std::thread([this]() { this->receive_packet(); });
-    m_commandReadThread.detach();
-    
-    m_commandWriteThread = std::thread([this]() { this->send_packet(); });
-    m_commandWriteThread.detach();
-
-    //send_hello();
-    //std::this_thread::sleep_for(std::chrono::seconds(5));
-    //send_close();
+    connect(server, port);
 }
 
 DHClient::~DHClient() 
@@ -41,11 +24,46 @@ void DHClient::process_console_input(const std::string& line)
     if (line == "close") {
         send_close();
     }
+    else if (line == "reconnect") {
+        reconnect();
+    }
 }
 
-void DHClient::reconnect(const std::string& server, unsigned int port)
+bool DHClient::connect(const std::string& server, unsigned int port)
 {
+    std::lock_guard lock(m_operationMutex);
 
+    m_server = server;
+    m_port = port;
+
+    // Create socket
+    tcp::resolver resolver(*sptr_ioContext);
+    tcp::resolver::results_type endpoints = resolver.resolve(server, std::to_string(port));
+
+    sptr_socket.reset(new tcp::socket(*sptr_ioContext));
+
+    // Connect to server
+    try {
+        boost::asio::connect(*sptr_socket, endpoints);
+
+        m_commandReadThread = std::thread([this]() { this->receive_packet(); });
+        m_commandReadThread.detach();
+
+        m_commandWriteThread = std::thread([this]() { this->send_packet(); });
+        m_commandWriteThread.detach();
+
+        return true;
+    }
+    catch (std::exception& e) {
+        std::cerr << "Client could not connect: " << e.what() << std::endl;
+
+        return false;
+    }
+}
+
+bool DHClient::reconnect()
+{
+    return connect(m_server, m_port);
 }
 
 void DHClient::receive_packet()
@@ -57,6 +75,8 @@ void DHClient::receive_packet()
 
         if (error || bytesRead == 0) {
             std::cout << "Server disconnected" << std::endl;
+
+            process_connection(packet_helpers::connection_status::disconnected, -1);
             break;
         }
 

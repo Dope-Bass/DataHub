@@ -14,7 +14,8 @@ public:
 
     void console_input_mode();
 
-    void reconnect(const std::string& server, unsigned int port);
+    bool connect(const std::string& server, unsigned int port);
+    bool reconnect();
     
     virtual void process_connection(packet_helpers::connection_status status, size_t clientId);
 
@@ -26,6 +27,10 @@ private:
     void send_packet();
 
     void push_task(const packet_helpers::packet& pack);
+
+    // Associated server
+    std::string m_server;
+    unsigned int m_port = -1;
 
     std::thread m_commandReadThread;
     std::thread m_commandWriteThread;
@@ -42,4 +47,6 @@ private:
     std::queue<packet_helpers::packet> m_tasks;
     std::condition_variable m_cv;
     std::mutex m_taskMutex;
+
+    std::mutex m_operationMutex;
 };

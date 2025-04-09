@@ -4,7 +4,8 @@ class Connection
 {
 
 public:
-	explicit Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, std::function<void(size_t)> callback);
+	explicit Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, 
+		std::function<void(size_t, packet_helpers::packet_type)> callback);
 	~Connection();
 
 	void create_connection_packet(bool connect = true);
@@ -19,7 +20,8 @@ private:
 
 	size_t m_clientId;
 
-	std::function<void(size_t)> m_serverCallback;
+	// Transfer commands assigned to server
+	std::function<void(size_t, packet_helpers::packet_type)> m_serverCallback;
 
 	// End point address
 	std::string m_address;
