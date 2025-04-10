@@ -20,12 +20,16 @@ namespace packet_helpers {
         unknown
     };
 
+    struct data {
+
+    };
+
 #pragma pack(push, 1)
     struct packet {
         packet_type type;
         size_t clientId;
 
-        std::variant<connection_status> m_info;
+        std::variant<connection_status, data> m_info;
 
         packet() {
             type = packet_type::unknown;
@@ -39,11 +43,27 @@ namespace packet_helpers {
 
             clientId = *((size_t*)(p_buffer));
             p_buffer += sizeof(clientId);
+
+            deserialize(p_buffer);
         }
 
         void copy_to_buffer(uint8_t const* p_buffer) const
         {
             memcpy((void*)p_buffer, this, sizeof(*this));
+        }
+
+        void deserialize(uint8_t const* p_buffer)
+        {
+            switch (type) {
+                case packet_type::connection: {
+                    m_info = (connection_status)*p_buffer;
+                    p_buffer += sizeof(connection_status);
+                    return;
+                }
+                default: {
+                    return;
+                }
+            }
         }
     };
 #pragma pack(pop)

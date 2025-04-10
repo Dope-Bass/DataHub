@@ -45,6 +45,7 @@ void DHServer::command(size_t clientId, packet_helpers::packet_type type)
     switch (type) {
         case packet_helpers::packet_type::close: {
             closeConnection(clientId);
+            break;
         }
         default: {
             return;
