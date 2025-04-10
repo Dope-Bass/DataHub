@@ -12,5 +12,6 @@
 
 #include <filesystem>
 #include <queue>
+#include <variant>
 
 #include "../Common/Packet.h"
