@@ -15,10 +15,13 @@ private:
 	void send_packet();
 
 	void process_incoming_packet(const packet_helpers::packet& pack);
+	void process_data_packet(const packet_helpers::packet& pack);
 
 	void push_task(const packet_helpers::packet &pack);
 
 	size_t m_clientId;
+
+	std::ofstream outFile;
 
 	// Transfer commands assigned to server
 	std::function<void(size_t, packet_helpers::packet_type)> m_serverCallback;

@@ -3,6 +3,7 @@
 using boost::asio::ip::tcp;
 
 #define PACKET_SIZE 4096
+#define DATA_BATCH_SIZE 2048
 
 namespace packet_helpers {
     enum class packet_type : uint8_t {
@@ -21,15 +22,27 @@ namespace packet_helpers {
     };
 
     struct data {
+        std::string fileName;
+        size_t strSize;
 
+        size_t fileSize;
+        size_t currentSize;
+
+        char buffer[DATA_BATCH_SIZE];
     };
+
+    using data_var = std::variant<connection_status, data>;
+
+    void deserialize_connection_status(uint8_t const* p_buffer, data_var& d);
+
+    void deserialize_data(uint8_t const* p_buffer, data_var& d);
 
 #pragma pack(push, 1)
     struct packet {
         packet_type type;
         size_t clientId;
 
-        std::variant<connection_status, data> m_info;
+        data_var m_info;
 
         packet() {
             type = packet_type::unknown;
@@ -56,8 +69,13 @@ namespace packet_helpers {
         {
             switch (type) {
                 case packet_type::connection: {
-                    m_info = (connection_status)*p_buffer;
+                    deserialize_connection_status(p_buffer, m_info);
                     p_buffer += sizeof(connection_status);
+                    return;
+                }
+                case packet_type::data: {
+                    deserialize_data(p_buffer, m_info);
+                    p_buffer += sizeof(data);
                     return;
                 }
                 default: {

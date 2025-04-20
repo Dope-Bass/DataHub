@@ -8,7 +8,7 @@ public:
     ~DHClient();
 
     void receiveFile(tcp::socket& socket, const std::string& fileName);
-    void sendFile(tcp::socket& socket, const std::string& fileName);
+    void sendFile(const std::string& fileName);
 
     void send_close();
 
@@ -22,6 +22,9 @@ public:
 private:
     void process_console_input(const std::string& line);
     void process_incoming_packets(const packet_helpers::packet &pack);
+
+    void create_data_packet(packet_helpers::packet &dataPacket, const std::string& fileName,
+                            packet_helpers::data& data);
 
     void receive_packet();
     void send_packet();

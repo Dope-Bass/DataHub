@@ -27,6 +27,9 @@ void DHClient::process_console_input(const std::string& line)
     else if (line == "reconnect") {
         reconnect();
     }
+    else {
+        sendFile(line);
+    }
 }
 
 bool DHClient::connect(const std::string& server, unsigned int port)
@@ -149,32 +152,51 @@ void DHClient::send_close()
     push_task(closeConnection);
 }
 
-void DHClient::sendFile(boost::asio::ip::tcp::socket& socket, const std::string& fileName) {
+void DHClient::create_data_packet(packet_helpers::packet &dataPacket, const std::string &fileName,
+                                    packet_helpers::data &data)
+{
+    data.fileName = fileName;
+    data.strSize = fileName.length();
+
+    dataPacket.m_info = data;
+}
+
+void DHClient::sendFile(const std::string& fileName) {
     try {
         std::ifstream inFile(fileName, std::ios::binary);
         if (!inFile) {
-            std::cerr << "Не удалось открыть файл: " << fileName << std::endl;
+            std::cerr << "Cant open file: " << fileName << std::endl;
             return;
         }
 
         // Отправляем имя файла серверу
-        boost::asio::write(socket, boost::asio::buffer(fileName.c_str(), fileName.size() + 1));
+        //boost::asio::write(socket, boost::asio::buffer(fileName.c_str(), fileName.size() + 1));
 
-        char buffer[4096];
-        std::cout << "Отправка файла \"" << fileName << "\"..." << std::endl;
+        //char buffer[DATA_BATCH_SIZE];
+        std::cout << "Sending file \"" << fileName << "\"..." << std::endl;
 
-        while (inFile.read(buffer, sizeof(buffer))) {
-            boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+
+        packet_helpers::packet dataPacket;
+        packet_helpers::data data;
+        while (inFile.read(data.buffer, sizeof(data.buffer))) {
+            //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+            
+            create_data_packet(dataPacket, fileName, data);
+            push_task(dataPacket);
         }
 
-        // Отправляем оставшиеся байты
+        // Sending remain bytes
         if (inFile.gcount() > 0) {
-            boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+            //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+            inFile.read(data.buffer, inFile.gcount());
+
+            create_data_packet(dataPacket, fileName, data);
+            push_task(dataPacket);
         }
 
-        std::cout << "Файл \"" << fileName << "\" успешно отправлен." << std::endl;
+        std::cout << "File \"" << fileName << "\" sended." << std::endl;
     } catch (std::exception& e) {
-        std::cerr << "Исключение при отправке файла: " << e.what() << std::endl;
+        std::cerr << "Exception: " << e.what() << std::endl;
     }
 }
 

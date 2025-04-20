@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Connection.h"
 
+namespace fs = std::filesystem;
+
 Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, 
     std::function<void(size_t, packet_helpers::packet_type)> callback)
 {
@@ -120,9 +122,55 @@ void Connection::process_incoming_packet(const packet_helpers::packet &pack)
             m_serverCallback(m_clientId, pack.type);
             return;
         }
+        case packet_helpers::packet_type::data: {
+            process_data_packet(pack);
+            return;
+        }
         default: {
             std::cout << "Unknown command from client: " << m_clientId << std::endl;
             return;
         }
+    }
+}
+
+void Connection::process_data_packet(const packet_helpers::packet& pack)
+{
+    try {
+        auto data = std::get<packet_helpers::data>(pack.m_info);
+
+        fs::path fPath(data.fileName);
+
+        if (!outFile.is_open()) {
+            outFile.open(fPath, std::ios::binary);
+        }
+
+        //char buffer[4096];
+        //boost::system::error_code error;
+
+
+
+        std::cout << "Receiving file \"" << std::get<packet_helpers::data>(pack.m_info).fileName << "\"..." << std::endl;
+
+        //while (true) {
+        //    size_t bytesRead = socket.read_some(boost::asio::buffer(buffer), error);
+        //    if (error == boost::asio::error::eof) {
+        //        break; // Конец файла
+        //    }
+        //    if (error) {
+        //        std::cerr << "Error receiving file: " << error.message() << std::endl;
+        //        return;
+        //    }
+
+        outFile.write(data.buffer, DATA_BATCH_SIZE);
+        //}
+
+        //outFile.close();
+        if (data.currentSize >= data.fileSize) {
+            outFile.close();
+            std::cout << "File \"" << data.fileName << "\" seccessfully received." << std::endl;
+        }
+    } catch (std::exception& e) {
+        std::cerr << "Exception during reception: " << e.what() << std::endl;
+        outFile.close();
     }
 }
