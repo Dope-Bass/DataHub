@@ -27,6 +27,9 @@ void DHClient::process_console_input(const std::string& line)
     else if (line == "reconnect") {
         reconnect();
     }
+    else if (line == "get_files") {
+        requestAllFiles();
+    }
     else {
         sendFile(line);
     }
@@ -95,12 +98,16 @@ void DHClient::receive_packet()
 void DHClient::process_incoming_packets(const packet_helpers::packet& pack)
 {
     switch (pack.type) {
-        case (packet_helpers::packet_type::connection): {
+        case packet_helpers::packet_type::connection: {
             process_connection(std::get<packet_helpers::connection_status>(pack.m_info), pack.clientId);
             return;
         }
-        case (packet_helpers::packet_type::data): {
+        case packet_helpers::packet_type::data: {
             // Process packet with data
+            return;
+        }
+        case packet_helpers::packet_type::get_files: {
+            process_getfiles(std::get<packet_helpers::files>(pack.m_info));
             return;
         }
         default: {
@@ -111,8 +118,15 @@ void DHClient::process_incoming_packets(const packet_helpers::packet& pack)
 
 void DHClient::process_connection(packet_helpers::connection_status status, size_t clientId)
 {
-    std::cout << "Received connection status: " << (uint8_t)status;
+    std::cout << "Received connection status: " << (int)status << std::endl;
     m_id = clientId;
+}
+
+void DHClient::process_getfiles(const packet_helpers::files& files)
+{
+    for (auto& strFile : files) {
+        std::cout << "Received file: " << strFile << std::endl;
+    }
 }
 
 void DHClient::send_packet()
@@ -155,10 +169,24 @@ void DHClient::send_close()
 void DHClient::create_data_packet(packet_helpers::packet &dataPacket, const std::string &fileName,
                                     packet_helpers::data &data)
 {
-    data.fileName = fileName;
     data.strSize = fileName.length();
+    data.fileName = fileName;
 
     dataPacket.m_info = data;
+    dataPacket.type = packet_helpers::packet_type::data;
+    dataPacket.clientId = m_id;
+}
+
+void DHClient::requestAllFiles()
+{
+    packet_helpers::packet getFiles;
+    getFiles.type = packet_helpers::packet_type::get_files;
+    getFiles.clientId = m_id;
+
+    packet_helpers::files vecFiles;
+    getFiles.m_info = vecFiles;
+
+    push_task(getFiles);
 }
 
 void DHClient::sendFile(const std::string& fileName) {

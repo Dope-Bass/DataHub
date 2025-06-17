@@ -1,15 +1,15 @@
 #include "pch.h"
 #include "Connection.h"
 
-namespace fs = std::filesystem;
-
-Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, 
+Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, fs::path currentDir,
     std::function<void(size_t, packet_helpers::packet_type)> callback)
 {
 	m_socket = socket;
     m_clientId = clientId;
 
     m_serverCallback = callback;
+
+    m_path = currentDir;
 
     m_address = socket->remote_endpoint().address().to_string();
     m_port = socket->remote_endpoint().port();
@@ -89,6 +89,20 @@ void Connection::create_connection_packet(bool connect)
     push_task(confirmConnection);
 }
 
+void Connection::create_getfiles_packet()
+{
+    packet_helpers::packet get_files;
+    get_files.type = packet_helpers::packet_type::get_files;
+    get_files.clientId = m_clientId;
+
+    packet_helpers::files vecFiles;
+    vecFiles.push_back(m_path.string());
+
+    get_files.m_info = vecFiles;
+
+    push_task(get_files);
+}
+
 void Connection::push_task(const packet_helpers::packet &pack)
 {
     std::unique_lock lk(m_taskMutex);
@@ -118,6 +132,10 @@ void Connection::send_packet()
 void Connection::process_incoming_packet(const packet_helpers::packet &pack)
 {
     switch (pack.type) {
+    case packet_helpers::packet_type::get_files: {
+            create_getfiles_packet();
+            return;
+        }
         case packet_helpers::packet_type::close: {
             m_serverCallback(m_clientId, pack.type);
             return;

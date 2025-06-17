@@ -1,14 +1,19 @@
 #pragma once
 
+namespace fs = std::filesystem;
+
 class Connection
 {
 
 public:
-	explicit Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, 
+	explicit Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, fs::path currentDir,
 		std::function<void(size_t, packet_helpers::packet_type)> callback);
 	~Connection();
 
 	void create_connection_packet(bool connect = true);
+	void create_getfiles_packet();
+
+	void push_task(const packet_helpers::packet& pack);
 
 private:
 	void receive_packet();
@@ -17,9 +22,8 @@ private:
 	void process_incoming_packet(const packet_helpers::packet& pack);
 	void process_data_packet(const packet_helpers::packet& pack);
 
-	void push_task(const packet_helpers::packet &pack);
-
 	size_t m_clientId;
+	fs::path m_path;
 
 	std::ofstream outFile;
 

@@ -18,6 +18,7 @@ public:
     bool reconnect();
     
     virtual void process_connection(packet_helpers::connection_status status, size_t clientId);
+    virtual void process_getfiles(const packet_helpers::files &files);
 
 private:
     void process_console_input(const std::string& line);
@@ -25,6 +26,8 @@ private:
 
     void create_data_packet(packet_helpers::packet &dataPacket, const std::string& fileName,
                             packet_helpers::data& data);
+
+    void requestAllFiles();
 
     void receive_packet();
     void send_packet();

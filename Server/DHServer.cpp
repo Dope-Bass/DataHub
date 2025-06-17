@@ -40,7 +40,7 @@ void DHServer::process_console_input(std::string& line)
 
 void DHServer::command(size_t clientId, packet_helpers::packet_type type)
 {
-    std::cout << "Server got command from client!" << clientId;
+    std::cout << "Server got command from client! - " << clientId << std::endl;
 
     switch (type) {
         case packet_helpers::packet_type::close: {
@@ -86,7 +86,7 @@ void DHServer::listen_on_connections()
             std::function<void(size_t, packet_helpers::packet_type)> callback = std::bind(&DHServer::command, this, _1, _2);
 
             m_clientConnections.insert({ id,
-                std::make_unique<Connection>(socket, id, callback) });
+                std::make_unique<Connection>(socket, id, fs::current_path(), callback)});
         }
     }
     catch (std::exception& e) {
