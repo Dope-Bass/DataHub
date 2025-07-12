@@ -29,10 +29,21 @@ namespace packet_helpers {
         size_t fileSize;
         size_t currentSize;
 
-        char buffer[DATA_BATCH_SIZE];
+        //char buffer[DATA_BATCH_SIZE];
+        std::vector<uint8_t> buffer;
     };
 
-    using files = std::vector<std::string>;
+    struct files {
+        size_t size = 0;
+        std::vector<std::string> data;
+
+        void add_file(std::string& str)
+        {
+            data.push_back(str);
+            size += str.size();
+            size += sizeof(size_t);
+        }
+    };
 
     using data_var = std::variant<connection_status, 
                                   data, 
@@ -41,17 +52,21 @@ namespace packet_helpers {
 
     // Deserialize
 
-    void deserialize_connection_status(uint8_t const* p_buffer, data_var& d);
-    void deserialize_data(uint8_t const* p_buffer, data_var& d);
-    void deserialize_files(uint8_t const* p_buffer, data_var& d);
+    void deserialize_connection_status(uint8_t* p_buffer, data_var& d);
+    void deserialize_data(uint8_t* p_buffer, data_var& d);
+    void deserialize_files(uint8_t* p_buffer, data_var& d);
 
     // Serialize
 
-    void serialize_connection_status(uint8_t const* p_buffer, const data_var& d);
-    void serialize_data(uint8_t const* p_buffer, const data_var& d);
-    void serialize_files(uint8_t const* p_buffer, const data_var& d);
+    void serialize_connection_status(uint8_t* p_buffer, const data_var& d);
+    void serialize_data(uint8_t* p_buffer, const data_var& d);
+    void serialize_files(uint8_t* p_buffer, const data_var& d);
 
 #pragma pack(push, 1)
+    struct header {
+        size_t size;
+    };
+
     struct packet {
         packet_type type;
         size_t clientId;
@@ -63,18 +78,46 @@ namespace packet_helpers {
             clientId = 0;
         }
 
-        void copy_from_buffer(uint8_t const* p_buffer)
+        size_t size() const
         {
-            type = (packet_type)*p_buffer;    
+            auto size = sizeof(packet);
+
+            switch (type) {
+                case packet_type::connection: {
+                    return size;
+                }
+                case packet_type::data: {
+                    return size;
+                }
+                case packet_type::get_files: {
+                    auto files_data = std::get_if<files>(&m_info);
+
+                    if (files_data) {
+                        size += sizeof(files_data->data.size());     // vector size
+                        size += files_data->size;   // vector data size
+                    }
+                    return size;
+                }
+                default: {
+                    return size;
+                }
+            }
+
+            return size;
+        }
+
+        void copy_from_buffer(uint8_t* p_buffer)
+        {
+            type = *reinterpret_cast<packet_type*>(p_buffer);
             p_buffer += sizeof(type);
 
-            clientId = *((size_t*)(p_buffer));
+            clientId = *reinterpret_cast<size_t*>(p_buffer);
             p_buffer += sizeof(clientId);
 
             deserialize(p_buffer);
         }
 
-        void copy_to_buffer(uint8_t const* p_buffer) const
+        void copy_to_buffer(uint8_t* p_buffer) const
         {
             memcpy((void*)p_buffer, &type, sizeof(type));
             p_buffer += sizeof(type);
@@ -85,7 +128,7 @@ namespace packet_helpers {
             serialize(p_buffer);
         }
 
-        void serialize(uint8_t const* p_buffer) const
+        void serialize(uint8_t* p_buffer) const
         {
             switch (type) {
                 case packet_type::connection: {
@@ -106,7 +149,7 @@ namespace packet_helpers {
             }
         }
 
-        void deserialize(uint8_t const* p_buffer)
+        void deserialize(uint8_t* p_buffer)
         {
             switch (type) {
                 case packet_type::connection: {
@@ -130,4 +173,8 @@ namespace packet_helpers {
 #pragma pack(pop)
 
     void ph_send_packet(tcp::socket& socket, const packet &pack);
+    size_t ph_read_packet(tcp::socket& socket, boost::system::error_code& error, packet_helpers::packet &pack);
+
+    void ph_set_full_packet(uint8_t* p_buffer, const packet_helpers::packet& pack);
+    void ph_get_header(uint8_t* p_buffer, packet_helpers::header& hd);
 };

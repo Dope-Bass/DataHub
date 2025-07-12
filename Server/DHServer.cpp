@@ -6,8 +6,7 @@ namespace fs = std::filesystem;
 
 DHServer::DHServer()
 {
-    m_connectionThread = std::thread([this]() { this->listen_on_connections(); });
-    m_connectionThread.detach();
+    m_connectionThread = std::jthread([this](std::stop_token stoken) { this->listen_on_connections(stoken); });
 }
 
 DHServer::~DHServer()
@@ -15,6 +14,8 @@ DHServer::~DHServer()
     for (auto &conn : m_clientConnections) {
         conn.second->create_connection_packet(false);
     }
+
+    m_connectionThread.request_stop();
 }
 
 void DHServer::console_input_mode()
@@ -33,7 +34,7 @@ void DHServer::process_console_input(std::string& line)
     if (line == "stop") {
         if (m_acceptor->is_open()) {
             m_acceptor->close();
-            m_connectionThread.join();
+            m_connectionThread.request_stop();
         }
     }
 }
@@ -63,7 +64,7 @@ void DHServer::closeConnection(size_t clientId)
     }
 }
 
-void DHServer::listen_on_connections()
+void DHServer::listen_on_connections(std::stop_token stoken)
 {
     try {
         boost::asio::io_context ioContext;
@@ -72,6 +73,10 @@ void DHServer::listen_on_connections()
         std::cout << "Server set up and listening on port " << m_port << std::endl;
 
         while (true) {
+            if (stoken.stop_requested()) {
+                break;
+            }
+
             auto socket = std::make_shared<tcp::socket>(ioContext);
             m_acceptor->accept(*socket.get());
 

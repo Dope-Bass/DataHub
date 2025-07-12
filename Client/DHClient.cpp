@@ -15,8 +15,8 @@ DHClient::~DHClient()
     std::cout << "Client destroyed" << std::endl;
     sptr_socket->close();
 
-    m_commandReadThread.join();
-    m_commandWriteThread.join();
+    m_commandReadThread.request_stop();
+    m_commandWriteThread.request_stop();
 }
 
 void DHClient::process_console_input(const std::string& line)
@@ -52,11 +52,8 @@ bool DHClient::connect(const std::string& server, unsigned int port)
     try {
         boost::asio::connect(*sptr_socket, endpoints);
 
-        m_commandReadThread = std::thread([this]() { this->receive_packet(); });
-        m_commandReadThread.detach();
-
-        m_commandWriteThread = std::thread([this]() { this->send_packet(); });
-        m_commandWriteThread.detach();
+        m_commandReadThread = std::jthread([this](std::stop_token stoken) { this->receive_packet(stoken); });
+        m_commandWriteThread = std::jthread([this](std::stop_token stoken) { this->send_packet(stoken); });
 
         return true;
     }
@@ -72,12 +69,16 @@ bool DHClient::reconnect()
     return connect(m_server, m_port);
 }
 
-void DHClient::receive_packet()
+void DHClient::receive_packet(std::stop_token stoken)
 {
     while (true) {
-        uint8_t buffer[PACKET_SIZE];
+        if (stoken.stop_requested()) {
+            break;
+        }
+
+        packet_helpers::packet pack;
         boost::system::error_code error;
-        size_t bytesRead = sptr_socket->read_some(boost::asio::buffer(buffer), error);
+        size_t bytesRead = packet_helpers::ph_read_packet(*sptr_socket, error, pack);
 
         if (error || bytesRead == 0) {
             std::cout << "Server disconnected" << std::endl;
@@ -85,9 +86,6 @@ void DHClient::receive_packet()
             process_connection(packet_helpers::connection_status::disconnected, -1);
             break;
         }
-
-        packet_helpers::packet pack;
-        pack.copy_from_buffer(buffer);
 
         std::cout << "Packet received from server " << pack.clientId << std::endl << (int)pack.type << std::endl;
 
@@ -124,14 +122,18 @@ void DHClient::process_connection(packet_helpers::connection_status status, size
 
 void DHClient::process_getfiles(const packet_helpers::files& files)
 {
-    for (auto& strFile : files) {
+    for (auto& strFile : files.data) {
         std::cout << "Received file: " << strFile << std::endl;
     }
 }
 
-void DHClient::send_packet()
+void DHClient::send_packet(std::stop_token stoken)
 {
     while (true) {
+        if (stoken.stop_requested()) {
+            break;
+        }
+
         std::unique_lock lk(m_taskMutex);
         m_cv.wait(lk, [this]() { return !m_tasks.empty(); });
 
@@ -190,42 +192,42 @@ void DHClient::requestAllFiles()
 }
 
 void DHClient::sendFile(const std::string& fileName) {
-    try {
-        std::ifstream inFile(fileName, std::ios::binary);
-        if (!inFile) {
-            std::cerr << "Cant open file: " << fileName << std::endl;
-            return;
-        }
+    //try {
+    //    std::ifstream inFile(fileName, std::ios::binary);
+    //    if (!inFile) {
+    //        std::cerr << "Cant open file: " << fileName << std::endl;
+    //        return;
+    //    }
 
-        // Отправляем имя файла серверу
-        //boost::asio::write(socket, boost::asio::buffer(fileName.c_str(), fileName.size() + 1));
+    //    // Отправляем имя файла серверу
+    //    //boost::asio::write(socket, boost::asio::buffer(fileName.c_str(), fileName.size() + 1));
 
-        //char buffer[DATA_BATCH_SIZE];
-        std::cout << "Sending file \"" << fileName << "\"..." << std::endl;
+    //    //char buffer[DATA_BATCH_SIZE];
+    //    std::cout << "Sending file \"" << fileName << "\"..." << std::endl;
 
 
-        packet_helpers::packet dataPacket;
-        packet_helpers::data data;
-        while (inFile.read(data.buffer, sizeof(data.buffer))) {
-            //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
-            
-            create_data_packet(dataPacket, fileName, data);
-            push_task(dataPacket);
-        }
+    //    packet_helpers::packet dataPacket;
+    //    packet_helpers::data data;
+    //    while (inFile.read(data.buffer, sizeof(data.buffer))) {
+    //        //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+    //        
+    //        create_data_packet(dataPacket, fileName, data);
+    //        push_task(dataPacket);
+    //    }
 
-        // Sending remain bytes
-        if (inFile.gcount() > 0) {
-            //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
-            inFile.read(data.buffer, inFile.gcount());
+    //    // Sending remain bytes
+    //    if (inFile.gcount() > 0) {
+    //        //boost::asio::write(socket, boost::asio::buffer(buffer, inFile.gcount()));
+    //        inFile.read(data.buffer, inFile.gcount());
 
-            create_data_packet(dataPacket, fileName, data);
-            push_task(dataPacket);
-        }
+    //        create_data_packet(dataPacket, fileName, data);
+    //        push_task(dataPacket);
+    //    }
 
-        std::cout << "File \"" << fileName << "\" sended." << std::endl;
-    } catch (std::exception& e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
-    }
+    //    std::cout << "File \"" << fileName << "\" sended." << std::endl;
+    //} catch (std::exception& e) {
+    //    std::cerr << "Exception: " << e.what() << std::endl;
+    //}
 }
 
 void DHClient::receiveFile(boost::asio::ip::tcp::socket& socket, const std::string& fileName) {

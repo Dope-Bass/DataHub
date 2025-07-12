@@ -51,16 +51,14 @@ void Connection::receive_packet()
             uint8_t buffer[PACKET_SIZE];
 
             try {
+                packet_helpers::packet pack;
                 boost::system::error_code error;
-                size_t bytesRead = m_socket->read_some(boost::asio::buffer(buffer), error);
+                size_t bytesRead = packet_helpers::ph_read_packet(*sptr, error, pack);
 
                 if (error || bytesRead == 0) {
                     std::cout << "Client disconnected." << std::endl;
                     break;
                 }
-
-                packet_helpers::packet pack;
-                pack.copy_from_buffer(buffer);
 
                 std::cout << "Packet received on server " << pack.clientId << std::endl << (int)pack.type << std::endl;
 
@@ -95,10 +93,11 @@ void Connection::create_getfiles_packet()
     get_files.type = packet_helpers::packet_type::get_files;
     get_files.clientId = m_clientId;
 
-    packet_helpers::files vecFiles;
-    vecFiles.push_back(m_path.string());
+    packet_helpers::files files_data;
+    auto str = m_path.string();
+    files_data.add_file(str);
 
-    get_files.m_info = vecFiles;
+    get_files.m_info = files_data;
 
     push_task(get_files);
 }
@@ -132,7 +131,7 @@ void Connection::send_packet()
 void Connection::process_incoming_packet(const packet_helpers::packet &pack)
 {
     switch (pack.type) {
-    case packet_helpers::packet_type::get_files: {
+        case packet_helpers::packet_type::get_files: {
             create_getfiles_packet();
             return;
         }
@@ -153,42 +152,42 @@ void Connection::process_incoming_packet(const packet_helpers::packet &pack)
 
 void Connection::process_data_packet(const packet_helpers::packet& pack)
 {
-    try {
-        auto data = std::get<packet_helpers::data>(pack.m_info);
+    //try {
+    //    auto data = std::get<packet_helpers::data>(pack.m_info);
 
-        fs::path fPath(data.fileName);
+    //    fs::path fPath(data.fileName);
 
-        if (!outFile.is_open()) {
-            outFile.open(fPath, std::ios::binary);
-        }
+    //    if (!outFile.is_open()) {
+    //        outFile.open(fPath, std::ios::binary);
+    //    }
 
-        //char buffer[4096];
-        //boost::system::error_code error;
+    //    //char buffer[4096];
+    //    //boost::system::error_code error;
 
 
 
-        std::cout << "Receiving file \"" << std::get<packet_helpers::data>(pack.m_info).fileName << "\"..." << std::endl;
+    //    std::cout << "Receiving file \"" << std::get<packet_helpers::data>(pack.m_info).fileName << "\"..." << std::endl;
 
-        //while (true) {
-        //    size_t bytesRead = socket.read_some(boost::asio::buffer(buffer), error);
-        //    if (error == boost::asio::error::eof) {
-        //        break; // Конец файла
-        //    }
-        //    if (error) {
-        //        std::cerr << "Error receiving file: " << error.message() << std::endl;
-        //        return;
-        //    }
+    //    //while (true) {
+    //    //    size_t bytesRead = socket.read_some(boost::asio::buffer(buffer), error);
+    //    //    if (error == boost::asio::error::eof) {
+    //    //        break; // Конец файла
+    //    //    }
+    //    //    if (error) {
+    //    //        std::cerr << "Error receiving file: " << error.message() << std::endl;
+    //    //        return;
+    //    //    }
 
-        outFile.write(data.buffer, DATA_BATCH_SIZE);
-        //}
+    //    outFile.write(data.buffer, DATA_BATCH_SIZE);
+    //    //}
 
-        //outFile.close();
-        if (data.currentSize >= data.fileSize) {
-            outFile.close();
-            std::cout << "File \"" << data.fileName << "\" seccessfully received." << std::endl;
-        }
-    } catch (std::exception& e) {
-        std::cerr << "Exception during reception: " << e.what() << std::endl;
-        outFile.close();
-    }
+    //    //outFile.close();
+    //    if (data.currentSize >= data.fileSize) {
+    //        outFile.close();
+    //        std::cout << "File \"" << data.fileName << "\" seccessfully received." << std::endl;
+    //    }
+    //} catch (std::exception& e) {
+    //    std::cerr << "Exception during reception: " << e.what() << std::endl;
+    //    outFile.close();
+    //}
 }
