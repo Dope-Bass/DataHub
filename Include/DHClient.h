@@ -29,20 +29,26 @@ private:
 
     void requestAllFiles();
 
-    void receive_packet(std::stop_token stoken);
-    void send_packet(std::stop_token stoken);
+    void receive_packet();
+    void send_packet();
 
     void push_task(const packet_helpers::packet& pack);
+
+    void stop_connection();
+    void start_connection();
 
     // Associated server
     std::string m_server;
     unsigned int m_port = -1;
 
-    std::jthread m_commandReadThread;
-    std::jthread m_commandWriteThread;
+    std::atomic_bool m_readCommandRun = false;
+    std::atomic_bool m_writeCommandRun = false;
 
-    std::jthread m_dataReadThread;
-    std::jthread m_dataWriteThread;
+    std::thread m_commandReadThread;
+    std::thread m_commandWriteThread;
+
+    std::thread m_dataReadThread;
+    std::thread m_dataWriteThread;
 
     std::shared_ptr<boost::asio::io_context> sptr_ioContext = nullptr;
     std::shared_ptr<tcp::socket> sptr_socket = nullptr;

@@ -14,11 +14,7 @@ Connection::Connection(std::shared_ptr<tcp::socket> socket, size_t clientId, fs:
     m_address = socket->remote_endpoint().address().to_string();
     m_port = socket->remote_endpoint().port();
 
-    m_commandReadThread = std::thread([this]() { this->receive_packet(); });
-    m_commandReadThread.detach();
-    
-    m_commandWriteThread = std::thread([this]() { this->send_packet(); });
-    m_commandWriteThread.detach();
+    start_connection();
 
     create_connection_packet();
 }
@@ -32,13 +28,7 @@ Connection::~Connection()
 
     m_socket->close();
 
-    if (m_commandReadThread.joinable()) {
-        m_commandReadThread.join();
-    }
-
-    if (m_commandWriteThread.joinable()) {
-        m_commandWriteThread.join();
-    }
+    stop_connection();
 }
 
 void Connection::receive_packet()
@@ -46,6 +36,10 @@ void Connection::receive_packet()
     std::weak_ptr<tcp::socket> sockCheck = m_socket;
 
     while (true) {
+        if (!m_readCommandRun) {
+            break;
+        }
+
         std::shared_ptr<tcp::socket> sptr = sockCheck.lock();
         if (std::shared_ptr<tcp::socket> sptr = sockCheck.lock()) {
             uint8_t buffer[PACKET_SIZE];
@@ -114,6 +108,10 @@ void Connection::push_task(const packet_helpers::packet &pack)
 void Connection::send_packet()
 {
     while (true) {
+        if (!m_writeCommandRun) {
+            break;
+        }
+
         std::unique_lock lk(m_taskMutex);
         m_cv.wait(lk, [this]() { return !m_tasks.empty(); });
 
@@ -190,4 +188,27 @@ void Connection::process_data_packet(const packet_helpers::packet& pack)
     //    std::cerr << "Exception during reception: " << e.what() << std::endl;
     //    outFile.close();
     //}
+}
+
+void Connection::stop_connection()
+{
+    m_readCommandRun = false;
+    m_writeCommandRun = false;
+
+    if (m_commandReadThread.joinable()) {
+        m_commandReadThread.join();
+    }
+
+    if (m_commandWriteThread.joinable()) {
+        m_commandWriteThread.join();
+    }
+}
+
+void Connection::start_connection()
+{
+    m_readCommandRun = true;
+    m_writeCommandRun = true;
+
+    m_commandReadThread = std::thread([this]() { this->receive_packet(); });
+    m_commandWriteThread = std::thread([this]() { this->send_packet(); });
 }

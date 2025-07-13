@@ -15,8 +15,7 @@ DHClient::~DHClient()
     std::cout << "Client destroyed" << std::endl;
     sptr_socket->close();
 
-    m_commandReadThread.request_stop();
-    m_commandWriteThread.request_stop();
+    stop_connection();
 }
 
 void DHClient::process_console_input(const std::string& line)
@@ -52,8 +51,7 @@ bool DHClient::connect(const std::string& server, unsigned int port)
     try {
         boost::asio::connect(*sptr_socket, endpoints);
 
-        m_commandReadThread = std::jthread([this](std::stop_token stoken) { this->receive_packet(stoken); });
-        m_commandWriteThread = std::jthread([this](std::stop_token stoken) { this->send_packet(stoken); });
+        start_connection();
 
         return true;
     }
@@ -69,10 +67,10 @@ bool DHClient::reconnect()
     return connect(m_server, m_port);
 }
 
-void DHClient::receive_packet(std::stop_token stoken)
+void DHClient::receive_packet()
 {
     while (true) {
-        if (stoken.stop_requested()) {
+        if (!m_readCommandRun) {
             break;
         }
 
@@ -127,10 +125,10 @@ void DHClient::process_getfiles(const packet_helpers::files& files)
     }
 }
 
-void DHClient::send_packet(std::stop_token stoken)
+void DHClient::send_packet()
 {
     while (true) {
-        if (stoken.stop_requested()) {
+        if (!m_writeCommandRun) {
             break;
         }
 
@@ -270,4 +268,27 @@ void DHClient::push_task(const packet_helpers::packet& pack)
     lk.unlock();
 
     m_cv.notify_all();
+}
+
+void DHClient::stop_connection()
+{
+    m_readCommandRun = false;
+    m_writeCommandRun = false;
+
+    if (m_commandReadThread.joinable()) {
+        m_commandReadThread.join();
+    }
+
+    if (m_commandWriteThread.joinable()) {
+        m_commandWriteThread.join();
+    }
+}
+
+void DHClient::start_connection()
+{
+    m_readCommandRun = true;
+    m_writeCommandRun = true;
+
+    m_commandReadThread = std::thread([this]() { this->receive_packet(); });
+    m_commandWriteThread = std::thread([this]() { this->send_packet(); });
 }

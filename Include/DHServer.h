@@ -21,12 +21,16 @@ public:
 private:
     void process_console_input(std::string& line);
 
-    void listen_on_connections(std::stop_token stoken);
+    void listen_on_connections();
+    void stop_connection();
+    void start_connection();
 
     unsigned int m_port = 27182;
 
-    std::jthread m_connectionThread;
-    std::jthread m_commandThread;
+    std::atomic_bool m_connectionRun = false;
+
+    std::thread m_connectionThread;
+    std::thread m_commandThread;
 
     std::unordered_map<size_t, std::unique_ptr<Connection>> m_clientConnections;
 

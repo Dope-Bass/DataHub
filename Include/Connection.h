@@ -22,6 +22,9 @@ private:
 	void process_incoming_packet(const packet_helpers::packet& pack);
 	void process_data_packet(const packet_helpers::packet& pack);
 
+	void stop_connection();
+	void start_connection();
+
 	size_t m_clientId;
 	fs::path m_path;
 
@@ -34,6 +37,9 @@ private:
 	std::string m_address;
 	uint_least16_t m_port;
 	//
+
+	std::atomic_bool m_readCommandRun = false;
+	std::atomic_bool m_writeCommandRun = false;
 
 	std::thread m_commandReadThread;
 	std::thread m_commandWriteThread;
