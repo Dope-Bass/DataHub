@@ -1,6 +1,8 @@
 using boost::asio::ip::tcp;
 
-class DHClient 
+#include "NetProcessor.h"
+
+class DHClient : public NetProcessor
 {
 
 public:
@@ -10,55 +12,22 @@ public:
     void receiveFile(tcp::socket& socket, const std::string& fileName);
     void sendFile(const std::string& fileName);
 
-    void send_close();
-
-    void console_input_mode();
+    // Executes outside Connection threads
+    void command(const packet_helpers::packet packet);
 
     bool connect(const std::string& server, unsigned int port);
     bool reconnect();
     
-    virtual void process_connection(packet_helpers::connection_status status, size_t clientId);
     virtual void process_getfiles(const packet_helpers::files &files);
 
 private:
-    void process_console_input(const std::string& line);
-    void process_incoming_packets(const packet_helpers::packet &pack);
-
     void create_data_packet(packet_helpers::packet &dataPacket, const std::string& fileName,
                             packet_helpers::data& data);
 
-    void requestAllFiles();
+    virtual bool process_console_input(const std::string& line) override;
+    virtual void process_packet(const packet_helpers::packet& pack) override;
 
-    void receive_packet();
-    void send_packet();
-
-    void push_task(const packet_helpers::packet& pack);
-
-    void stop_connection();
-    void start_connection();
-
-    // Associated server
-    std::string m_server;
-    unsigned int m_port = -1;
-
-    std::atomic_bool m_readCommandRun = false;
-    std::atomic_bool m_writeCommandRun = false;
-
-    std::thread m_commandReadThread;
-    std::thread m_commandWriteThread;
-
-    std::thread m_dataReadThread;
-    std::thread m_dataWriteThread;
+    void request_files(size_t connId);
 
     std::shared_ptr<boost::asio::io_context> sptr_ioContext = nullptr;
-    std::shared_ptr<tcp::socket> sptr_socket = nullptr;
-
-    size_t m_id = -1;
-
-    // Syncronization
-    std::queue<packet_helpers::packet> m_tasks;
-    std::condition_variable m_cv;
-    std::mutex m_taskMutex;
-
-    std::mutex m_operationMutex;
 };

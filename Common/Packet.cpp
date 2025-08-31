@@ -1,4 +1,5 @@
 #include "../Include/pch.h"
+#include "Packet.h"
 namespace packet_helpers {
 
     void deserialize_connection_status(uint8_t* p_buffer, data_var& d)
@@ -145,4 +146,12 @@ namespace packet_helpers {
             p_buffer += sizeof(hd.size);
         }
     }
+}
+
+size_t createId()
+{
+    auto uuid = boost::uuids::random_generator()();
+    auto strId = boost::uuids::to_string(uuid);
+
+    return std::hash<std::string>{}(strId);
 }

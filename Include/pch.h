@@ -13,5 +13,6 @@
 #include <filesystem>
 #include <queue>
 #include <variant>
+#include <unordered_map>
 
 #include "../Common/Packet.h"

@@ -1,8 +1,8 @@
 using boost::asio::ip::tcp;
 
-#include "Connection.h"
+#include "NetProcessor.h"
 
-class DHServer 
+class DHServer : public NetProcessor
 {
 
 public:
@@ -12,27 +12,22 @@ public:
     void receiveFile(tcp::socket& socket, const std::string& fileName);
     void sendFile(tcp::socket& socket, const std::string& fileName);
 
-    void console_input_mode();
-
-    void command(size_t clientId, packet_helpers::packet_type type);
-
-    void closeConnection(size_t clientId);
-
 private:
-    void process_console_input(std::string& line);
+    virtual bool process_console_input(const std::string& line) override;
+    virtual void process_packet(const packet_helpers::packet& pack) override;
 
     void listen_on_connections();
-    void stop_connection();
-    void start_connection();
+
+    void create_getfiles_packet(const packet_helpers::packet& pack);
+
+    // -------------------------
 
     unsigned int m_port = 27182;
+    size_t m_id = -1;
 
     std::atomic_bool m_connectionRun = false;
 
     std::thread m_connectionThread;
-    std::thread m_commandThread;
-
-    std::unordered_map<size_t, std::unique_ptr<Connection>> m_clientConnections;
 
     std::shared_ptr<tcp::acceptor> m_acceptor;
 

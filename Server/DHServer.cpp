@@ -1,67 +1,84 @@
 #include "pch.h"
 #include "DHServer.h"
 
-using boost::asio::ip::tcp;
 namespace fs = std::filesystem;
 
 DHServer::DHServer()
+    : NetProcessor()
 {
-    start_connection();
+    m_id = createId();
+
+    m_connectionRun = true;
+    m_connectionThread = std::thread([this]() { this->listen_on_connections(); });
 }
 
 DHServer::~DHServer()
 {
-    for (auto &conn : m_clientConnections) {
-        conn.second->create_connection_packet(false);
-    }
+    stop();
 
-    stop_connection();
-}
-
-void DHServer::console_input_mode()
-{
-    for (std::string line; std::cout << "Command > " && std::getline(std::cin, line); )
-    {
-        if (!line.empty()) {
-            std::cout << "Process" << std::endl;
-            process_console_input(line);
-        }
+    m_connectionRun = false;
+    if (m_connectionThread.joinable()) {
+        m_connectionThread.join();
     }
 }
 
-void DHServer::process_console_input(std::string& line)
+bool DHServer::process_console_input(const std::string& line)
 {
     if (line == "stop") {
         if (m_acceptor->is_open()) {
             m_acceptor->close();
-
-            stop_connection();
         }
+
+        return false;
     }
+
+    return true;
 }
 
-void DHServer::command(size_t clientId, packet_helpers::packet_type type)
+void DHServer::process_packet(const packet_helpers::packet& pack)
 {
-    std::cout << "Server got command from client! - " << clientId << std::endl;
-
-    switch (type) {
-        case packet_helpers::packet_type::close: {
-            closeConnection(clientId);
-            break;
+    switch (pack.type) {
+        case packet_helpers::packet_type::connection: {
+            process_connection(pack);
+            return;
+        }
+        case packet_helpers::packet_type::get_files: {
+            create_getfiles_packet(pack);
+            return;
+        }
+        case packet_helpers::packet_type::data: {
+            //process_data_packet(pack);
+            return;
         }
         default: {
+            std::cout << "Unknown command (sender/receiver): " << pack.senderId << pack.receiverId << std::endl;
             return;
         }
     }
 }
 
-void DHServer::closeConnection(size_t clientId)
+void DHServer::create_getfiles_packet(const packet_helpers::packet& pack)
 {
-    std::lock_guard lock(m_mutex);
+    if (hasConnection(pack.senderId)) {
+        auto connIt = m_connections.find(pack.senderId);
+        packet_helpers::packet get_files;
 
-    auto connectionIt = m_clientConnections.find(clientId);
-    if (connectionIt != m_clientConnections.end()) {
-        m_clientConnections.erase(connectionIt);
+        get_files.type = packet_helpers::packet_type::get_files;
+        get_files.senderId = m_id;
+        get_files.receiverId = connIt->second->get_receiver();
+
+        packet_helpers::files files_data;
+        //auto str = (*connIt)->get_path().string();
+        //files_data.add_file(str);
+
+        for (int index = 0; index < 100; ++index) {
+            std::string str = "File Name";
+            files_data.add_file(str);
+        }
+
+        get_files.m_info = files_data;
+
+        connIt->second->send(pack);
     }
 }
 
@@ -73,26 +90,20 @@ void DHServer::listen_on_connections()
         m_acceptor.reset(new tcp::acceptor(ioContext, tcp::endpoint(tcp::v4(), m_port)));
         std::cout << "Server set up and listening on port " << m_port << std::endl;
 
-        while (true) {
-            if (!m_connectionRun) {
-                break;
-            }
-
+        while (m_connectionRun) {
+            boost::system::error_code err;
             auto socket = std::make_shared<tcp::socket>(ioContext);
-            m_acceptor->accept(*socket.get());
+            m_acceptor->accept(*socket.get(), err);
 
-            std::cout << "Client connected" << std::endl;
+            if (!err) {
+                std::cout << "Client connected" << std::endl;
+                size_t connId = createId();
 
-            auto uuid = boost::uuids::random_generator()();
-            auto strId = boost::uuids::to_string(uuid);
-            size_t id = std::hash<std::string>{}(strId);
+                using std::placeholders::_1;
+                callback_func callback = std::bind(&DHServer::process_callback, this, _1);
 
-            using std::placeholders::_1;
-            using std::placeholders::_2;
-            std::function<void(size_t, packet_helpers::packet_type)> callback = std::bind(&DHServer::command, this, _1, _2);
-
-            m_clientConnections.insert({ id,
-                std::make_unique<Connection>(socket, id, fs::current_path(), callback)});
+                m_connections.insert({ connId, std::make_unique<Connection>(socket, connId, m_id, callback) });
+            }
         }
     }
     catch (std::exception& e) {
@@ -159,18 +170,4 @@ void DHServer::sendFile(tcp::socket& socket, const std::string& fileName) {
     } catch (std::exception& e) {
         std::cerr << "Исключение при отправке файла: " << e.what() << std::endl;
     }
-}
-
-void DHServer::stop_connection()
-{
-    m_connectionRun = false;
-    if (m_connectionThread.joinable()) {
-        m_connectionThread.join();
-    }
-}
-
-void DHServer::start_connection()
-{
-    m_connectionRun = true;
-    m_connectionThread = std::thread([this]() { this->listen_on_connections(); });
 }

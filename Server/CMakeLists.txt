@@ -3,7 +3,6 @@ set(CMAKE_CXX_STANDARD 23)
 # Серверный CMakeLists.txt
 set(SERVER_SOURCES
     DHServer.cpp
-    Connection.cpp
     main.cpp
 )
 

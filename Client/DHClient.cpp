@@ -2,6 +2,7 @@
 #include "DHClient.h"
 
 DHClient::DHClient(const std::string& server, unsigned int port)
+    : NetProcessor()
 {
     std::string file = "B:\\testTransfer.txt";
 
@@ -13,89 +14,82 @@ DHClient::DHClient(const std::string& server, unsigned int port)
 DHClient::~DHClient() 
 {
     std::cout << "Client destroyed" << std::endl;
-    sptr_socket->close();
 
-    stop_connection();
+    stop();
 }
 
-void DHClient::process_console_input(const std::string& line)
+bool DHClient::process_console_input(const std::string& line)
 {
     if (line == "close") {
-        send_close();
+        stop();
     }
     else if (line == "reconnect") {
         reconnect();
     }
     else if (line == "get_files") {
-        requestAllFiles();
+        request_files(m_connections.begin()->second->get_id());
     }
     else {
         sendFile(line);
     }
+
+    return true;
 }
 
 bool DHClient::connect(const std::string& server, unsigned int port)
 {
-    std::lock_guard lock(m_operationMutex);
-
-    m_server = server;
-    m_port = port;
-
     // Create socket
+    boost::system::error_code err;
     tcp::resolver resolver(*sptr_ioContext);
-    tcp::resolver::results_type endpoints = resolver.resolve(server, std::to_string(port));
+    tcp::resolver::results_type endpoints = resolver.resolve(server, std::to_string(port), err);
 
-    sptr_socket.reset(new tcp::socket(*sptr_ioContext));
+    if (!err) {
+        auto socket = make_shared<tcp::socket>(*sptr_ioContext);
 
-    // Connect to server
-    try {
-        boost::asio::connect(*sptr_socket, endpoints);
+        // Connect to server
+        try {
+            boost::asio::connect(*socket, endpoints, err);
 
-        start_connection();
+            if (!err) {
+                size_t connId = createId();
 
-        return true;
+                using std::placeholders::_1;
+                callback_func callback = std::bind(&DHClient::process_callback, this, _1);
+
+                m_connections.insert({ connId, std::make_unique<Connection>(socket, connId, m_id, callback) });
+
+                return true;
+            }
+            
+            return false;
+        }
+        catch (std::exception& e) {
+            std::cerr << "Client could not connect: " << e.what() << std::endl;
+
+            return false;
+        }
     }
-    catch (std::exception& e) {
-        std::cerr << "Client could not connect: " << e.what() << std::endl;
 
-        return false;
-    }
+    return false;
 }
 
 bool DHClient::reconnect()
 {
-    return connect(m_server, m_port);
+    //stop_connection();
+
+    //boost::system::error_code error;
+    //sptr_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, error);
+
+    //return connect(m_server, m_port);
+
+    return false;
 }
 
-void DHClient::receive_packet()
-{
-    while (true) {
-        if (!m_readCommandRun) {
-            break;
-        }
-
-        packet_helpers::packet pack;
-        boost::system::error_code error;
-        size_t bytesRead = packet_helpers::ph_read_packet(*sptr_socket, error, pack);
-
-        if (error || bytesRead == 0) {
-            std::cout << "Server disconnected" << std::endl;
-
-            process_connection(packet_helpers::connection_status::disconnected, -1);
-            break;
-        }
-
-        std::cout << "Packet received from server " << pack.clientId << std::endl << (int)pack.type << std::endl;
-
-        process_incoming_packets(pack);
-    }
-}
-
-void DHClient::process_incoming_packets(const packet_helpers::packet& pack)
+void DHClient::process_packet(const packet_helpers::packet& pack)
 {
     switch (pack.type) {
         case packet_helpers::packet_type::connection: {
-            process_connection(std::get<packet_helpers::connection_status>(pack.m_info), pack.clientId);
+            process_connection(pack);
             return;
         }
         case packet_helpers::packet_type::data: {
@@ -112,12 +106,6 @@ void DHClient::process_incoming_packets(const packet_helpers::packet& pack)
     }
 }
 
-void DHClient::process_connection(packet_helpers::connection_status status, size_t clientId)
-{
-    std::cout << "Received connection status: " << (int)status << std::endl;
-    m_id = clientId;
-}
-
 void DHClient::process_getfiles(const packet_helpers::files& files)
 {
     for (auto& strFile : files.data) {
@@ -125,68 +113,29 @@ void DHClient::process_getfiles(const packet_helpers::files& files)
     }
 }
 
-void DHClient::send_packet()
-{
-    while (true) {
-        if (!m_writeCommandRun) {
-            break;
-        }
-
-        std::unique_lock lk(m_taskMutex);
-        m_cv.wait(lk, [this]() { return !m_tasks.empty(); });
-
-        packet_helpers::packet pack = m_tasks.front();
-        m_tasks.pop();
-
-        lk.unlock();
-
-        // Process task
-
-        packet_helpers::ph_send_packet(*sptr_socket, pack);
-    }
-}
-
-void DHClient::console_input_mode()
-{
-    for (std::string line; std::cout << "Command > " && std::getline(std::cin, line); )
-    {
-        if (!line.empty()) { 
-            std::cout << "Process" << std::endl;
-            process_console_input(line);
-        }
-    }
-}
-
-void DHClient::send_close()
-{
-    packet_helpers::packet closeConnection;
-    closeConnection.type = packet_helpers::packet_type::close;
-    closeConnection.clientId = m_id;
-
-    push_task(closeConnection);
-}
-
 void DHClient::create_data_packet(packet_helpers::packet &dataPacket, const std::string &fileName,
                                     packet_helpers::data &data)
 {
-    data.strSize = fileName.length();
-    data.fileName = fileName;
+    //data.strSize = fileName.length();
+    //data.fileName = fileName;
 
-    dataPacket.m_info = data;
-    dataPacket.type = packet_helpers::packet_type::data;
-    dataPacket.clientId = m_id;
+    //dataPacket.m_info = data;
+    //dataPacket.type = packet_helpers::packet_type::data;
+    //dataPacket.clientId = m_id;
 }
 
-void DHClient::requestAllFiles()
+void DHClient::request_files(size_t connId)
 {
-    packet_helpers::packet getFiles;
-    getFiles.type = packet_helpers::packet_type::get_files;
-    getFiles.clientId = m_id;
+    if (hasConnection(connId)) {
+        packet_helpers::packet getFiles;
+        getFiles.type = packet_helpers::packet_type::get_files;
 
-    packet_helpers::files vecFiles;
-    getFiles.m_info = vecFiles;
+        packet_helpers::files vecFiles;
+        getFiles.m_info = vecFiles;
 
-    push_task(getFiles);
+        auto connIt = m_connections.find(connId);
+        connIt->second->send(getFiles);
+    }
 }
 
 void DHClient::sendFile(const std::string& fileName) {
@@ -259,36 +208,4 @@ void DHClient::receiveFile(boost::asio::ip::tcp::socket& socket, const std::stri
     } catch (std::exception& e) {
         std::cerr << "Исключение при приеме файла: " << e.what() << std::endl;
     }
-}
-
-void DHClient::push_task(const packet_helpers::packet& pack)
-{
-    std::unique_lock lk(m_taskMutex);
-    m_tasks.push(pack);
-    lk.unlock();
-
-    m_cv.notify_all();
-}
-
-void DHClient::stop_connection()
-{
-    m_readCommandRun = false;
-    m_writeCommandRun = false;
-
-    if (m_commandReadThread.joinable()) {
-        m_commandReadThread.join();
-    }
-
-    if (m_commandWriteThread.joinable()) {
-        m_commandWriteThread.join();
-    }
-}
-
-void DHClient::start_connection()
-{
-    m_readCommandRun = true;
-    m_writeCommandRun = true;
-
-    m_commandReadThread = std::thread([this]() { this->receive_packet(); });
-    m_commandWriteThread = std::thread([this]() { this->send_packet(); });
 }

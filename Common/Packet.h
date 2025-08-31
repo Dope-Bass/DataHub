@@ -5,6 +5,8 @@ using boost::asio::ip::tcp;
 #define PACKET_SIZE 4096
 #define DATA_BATCH_SIZE 2048
 
+size_t createId();
+
 namespace packet_helpers {
     enum class packet_type : uint8_t {
         connection = 1,
@@ -29,7 +31,6 @@ namespace packet_helpers {
         size_t fileSize;
         size_t currentSize;
 
-        //char buffer[DATA_BATCH_SIZE];
         std::vector<uint8_t> buffer;
     };
 
@@ -69,13 +70,15 @@ namespace packet_helpers {
 
     struct packet {
         packet_type type;
-        size_t clientId;
+        size_t senderId;
+        size_t receiverId;
 
         data_var m_info;
 
         packet() {
             type = packet_type::unknown;
-            clientId = 0;
+            senderId = -1;
+            receiverId = -1;
         }
 
         size_t size() const
@@ -111,8 +114,11 @@ namespace packet_helpers {
             type = *reinterpret_cast<packet_type*>(p_buffer);
             p_buffer += sizeof(type);
 
-            clientId = *reinterpret_cast<size_t*>(p_buffer);
-            p_buffer += sizeof(clientId);
+            senderId = *reinterpret_cast<size_t*>(p_buffer);
+            p_buffer += sizeof(senderId);
+            
+            receiverId = *reinterpret_cast<size_t*>(p_buffer);
+            p_buffer += sizeof(receiverId);
 
             deserialize(p_buffer);
         }
@@ -122,8 +128,11 @@ namespace packet_helpers {
             memcpy((void*)p_buffer, &type, sizeof(type));
             p_buffer += sizeof(type);
 
-            memcpy((void*)p_buffer, &clientId, sizeof(clientId));
-            p_buffer += sizeof(clientId);
+            memcpy((void*)p_buffer, &senderId, sizeof(senderId));
+            p_buffer += sizeof(senderId);
+            
+            memcpy((void*)p_buffer, &receiverId, sizeof(receiverId));
+            p_buffer += sizeof(receiverId);
 
             serialize(p_buffer);
         }
